@@ -1,17 +1,17 @@
 name: mongo-sharding
 
 services:
-  configSrv:
+  configSrv1:
     image: mongo:latest
-    container_name: configSrv
+    container_name: configSrv1
     restart: always
     ports:
       - "27017:27017"
     networks:
       app-network:
-        ipv4_address: 173.17.0.10
+        ipv4_address: 173.17.0.7
     volumes:
-      - config-data:/data/db
+      - config-data-1:/data/db
     command:
       [
         "--configsvr",
@@ -26,22 +26,22 @@ services:
       interval: 5s
       start_period: 10s
 
-  shard1:
+  configSrv2:
     image: mongo:latest
-    container_name: shard1
+    container_name: configSrv2
     restart: always
     ports:
       - "27018:27018"
     networks:
       app-network:
-        ipv4_address: 173.17.0.9
+        ipv4_address: 173.17.0.8
     volumes:
-      - shard1-data:/data/db
+      - config-data-2:/data/db
     command:
       [
-        "--shardsvr",
+        "--configsvr",
         "--replSet",
-        "shard1",
+        "config_server",
         "--bind_ip_all",
         "--port",
         "27018"
@@ -51,22 +51,22 @@ services:
       interval: 5s
       start_period: 10s
 
-  shard2:
+  configSrv3:
     image: mongo:latest
-    container_name: shard2
+    container_name: configSrv3
     restart: always
     ports:
       - "27019:27019"
     networks:
       app-network:
-        ipv4_address: 173.17.0.8
+        ipv4_address: 173.17.0.9
     volumes:
-      - shard2-data:/data/db
+      - config-data-3:/data/db
     command:
       [
-        "--shardsvr",
+        "--configsvr",
         "--replSet",
-        "shard2",
+        "config_server",
         "--bind_ip_all",
         "--port",
         "27019"
@@ -76,20 +76,22 @@ services:
       interval: 5s
       start_period: 10s
 
-  mongos_router:
+  shard1:
     image: mongo:latest
-    container_name: mongos_router
+    container_name: shard1
     restart: always
     ports:
       - "27020:27020"
     networks:
       app-network:
-        ipv4_address: 173.17.0.7
+        ipv4_address: 173.17.0.10
+    volumes:
+      - shard1-data:/data/db
     command:
       [
-        "mongos",
-        "--configdb",
-        "config_server/configSrv:27017",
+        "--shardsvr",
+        "--replSet",
+        "shard1",
         "--bind_ip_all",
         "--port",
         "27020"
@@ -99,24 +101,74 @@ services:
       interval: 5s
       start_period: 10s
 
+  shard2:
+    image: mongo:latest
+    container_name: shard2
+    restart: always
+    ports:
+      - "27021:27021"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.11
+    volumes:
+      - shard2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27021"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27021", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  mongos_router:
+    image: mongo:latest
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "27022:27022"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.12
+    command:
+      [
+        "mongos",
+        "--configdb",
+        "config_server/configSrv1:27017,configSrv2:27018,configSrv3:27019",
+        "--bind_ip_all",
+        "--port",
+        "27022"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27022", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
   pymongo_api:
     container_name: pymongo_api
     build: 
       context: api_app
       dockerfile: Dockerfile
     depends_on:
-      - configSrv
+      - configSrv1
+      - configSrv2
+      - configSrv3
       - mongos_router
       - shard1
       - shard2
     ports:
       - "8080:8080"
     environment:
-      MONGODB_URL: "mongodb://mongos_router:27020"
+      MONGODB_URL: "mongodb://mongos_router:27022"
       MONGODB_DATABASE_NAME: "somedb"
     networks:
       app-network:
-        ipv4_address: 173.17.0.17
+        ipv4_address: 173.17.0.13
 
 networks:
   app-network:
@@ -127,6 +179,8 @@ networks:
         - subnet: 173.17.0.0/16
 
 volumes:
-  config-data:
+  config-data-1:
+  config-data-2:
+  config-data-3:
   shard1-data:
   shard2-data:
