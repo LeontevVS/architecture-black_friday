@@ -1,0 +1,186 @@
+name: mongo-sharding
+
+services:
+  configSrv1:
+    image: mongo:latest
+    container_name: configSrv1
+    restart: always
+    ports:
+      - "27017:27017"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.7
+    volumes:
+      - config-data-1:/data/db
+    command:
+      [
+        "--configsvr",
+        "--replSet",
+        "config_server",
+        "--bind_ip_all",
+        "--port",
+        "27017"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27017", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  configSrv2:
+    image: mongo:latest
+    container_name: configSrv2
+    restart: always
+    ports:
+      - "27018:27018"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.8
+    volumes:
+      - config-data-2:/data/db
+    command:
+      [
+        "--configsvr",
+        "--replSet",
+        "config_server",
+        "--bind_ip_all",
+        "--port",
+        "27018"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27018", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  configSrv3:
+    image: mongo:latest
+    container_name: configSrv3
+    restart: always
+    ports:
+      - "27019:27019"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.9
+    volumes:
+      - config-data-3:/data/db
+    command:
+      [
+        "--configsvr",
+        "--replSet",
+        "config_server",
+        "--bind_ip_all",
+        "--port",
+        "27019"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27019", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard1:
+    image: mongo:latest
+    container_name: shard1
+    restart: always
+    ports:
+      - "27020:27020"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.10
+    volumes:
+      - shard1-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard1",
+        "--bind_ip_all",
+        "--port",
+        "27020"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27020", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  shard2:
+    image: mongo:latest
+    container_name: shard2
+    restart: always
+    ports:
+      - "27021:27021"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.11
+    volumes:
+      - shard2-data:/data/db
+    command:
+      [
+        "--shardsvr",
+        "--replSet",
+        "shard2",
+        "--bind_ip_all",
+        "--port",
+        "27021"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27021", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  mongos_router:
+    image: mongo:latest
+    container_name: mongos_router
+    restart: always
+    ports:
+      - "27022:27022"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.12
+    command:
+      [
+        "mongos",
+        "--configdb",
+        "config_server/configSrv1:27017,configSrv2:27018,configSrv3:27019",
+        "--bind_ip_all",
+        "--port",
+        "27022"
+      ]
+    healthcheck:
+      test: [ "CMD", "mongosh", "--port", "27022", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      start_period: 10s
+
+  pymongo_api:
+    container_name: pymongo_api
+    build: 
+      context: api_app
+      dockerfile: Dockerfile
+    depends_on:
+      - configSrv1
+      - configSrv2
+      - configSrv3
+      - mongos_router
+      - shard1
+      - shard2
+    ports:
+      - "8080:8080"
+    environment:
+      MONGODB_URL: "mongodb://mongos_router:27022"
+      MONGODB_DATABASE_NAME: "somedb"
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.13
+
+networks:
+  app-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 173.17.0.0/16
+
+volumes:
+  config-data-1:
+  config-data-2:
+  config-data-3:
+  shard1-data:
+  shard2-data:
