@@ -30,8 +30,6 @@ rs.initiate(
 );
 EOF
 
-wait_for_primary configSrv1 27017
-
 docker compose exec -T shard1 mongosh --port 27020 <<EOF
 rs.initiate(
   {
@@ -42,8 +40,6 @@ rs.initiate(
   }
 );
 EOF
-
-wait_for_primary shard1 27020
 
 docker compose exec -T shard2 mongosh --port 27021 <<EOF
 rs.initiate(
@@ -56,6 +52,8 @@ rs.initiate(
 );
 EOF
 
+wait_for_primary configSrv1 27017
+wait_for_primary shard1 27020
 wait_for_primary shard2 27021
 
 docker compose exec -T mongos_router mongosh --port 27022 <<EOF
